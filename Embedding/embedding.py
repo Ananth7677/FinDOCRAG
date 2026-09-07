@@ -54,7 +54,7 @@ def process_embedding(file_path=None, *, output_path=None):
     if contents:
         embedding_result = create_embedding(contents)
 
-        store_embeddings(embedding_result, i-len(contents), data, output_path=output_path)
+        store_embeddings(embedding_result, i+1-len(contents), data, output_path=output_path)
 
 def store_embeddings(embedding_result, start_index, data, *, output_path=None):
     dest_file = Path(output_path) if output_path is not None else EMBEDDINGS_PATH
@@ -85,4 +85,4 @@ def append_temp_to_main(temp_file, dest_file):
     os.remove(temp_file)
 
 if __name__ == "__main__":
-    process_embedding()    
+    process_embedding()
