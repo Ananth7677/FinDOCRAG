@@ -1,0 +1,47 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Virtual environments and local configuration
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Editor and operating system files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Generated extraction outputs
+/Extract/extracted_data.jsonl
+/Extract/metadata.json
+/Extract/chrome_patterns.json
+/Extract/pages.jsonl
+/Extract/extracted_section_info.json
+/Extract/temp_extracted_data.jsonl
+/Extract/temp_metadata.json
+/Extract/temp_data.jsonl
+
+# Generated chunk outputs
+/Chunking/chunk.jsonl
+/Chunking/temp_chunk.jsonl
+/chunk.jsonl
+/temp_chunk.jsonl
