@@ -1,3 +1,12 @@
+import sys
+from pathlib import Path
+
+# Support running this script directly as well as importing it from the API.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from config import PAGES_PATH, CHUNK_DIR
+
 import json
 import os
 
@@ -83,12 +92,13 @@ def para_append_process(paragraph: str,curr_para_list: list, curr_len: int, chun
 
     return curr_len
 
-def chunk_process():
-    temp_file = "temp_chunk.jsonl"
-    dest_file = "chunk.jsonl"
+def chunk_process(file_path=PAGES_PATH, *, output_dir=CHUNK_DIR):
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    temp_file = Path(output_dir) / "temp_chunk.jsonl"
+    dest_file = Path(output_dir) / "chunk.jsonl"
     
     try: 
-        with open("../Extract/pages.jsonl", "r", encoding= "utf-8") as file:
+        with open(file_path, "r", encoding= "utf-8") as file:
             data = [json.loads(line) for line in file]
         
         with open(temp_file, "w", encoding= "utf-8") as chunk_json_file:
