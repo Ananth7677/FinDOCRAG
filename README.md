@@ -2,7 +2,7 @@
 
 FinDocRAG is a work-in-progress document preparation pipeline for retrieval-augmented generation (RAG) over financial reports. It extracts text from PDFs, removes detected headers and footers, and creates overlapping text chunks with document and page references.
 
-The current implementation covers extraction, cleaning, and chunking. Embedding generation, vector search, and question answering are not implemented yet.
+The current implementation covers extraction, cleaning, chunking, and Gemini embedding generation, with FastAPI controllers for each stage. Vector search and question answering are not implemented yet.
 
 ## Project structure
 
@@ -12,112 +12,123 @@ FinDocRAG/
 │   └── Mastercard/Report.pdf     # Included input report
 ├── Extract/
 │   ├── extract.py               # PDF extraction and text cleaning
-│   ├── text_analysis.py         # Header/footer detection
-│   ├── extracted_data.jsonl     # Raw page text and positioned blocks
-│   ├── metadata.json            # Source hash and extraction metadata
-│   ├── chrome_patterns.json     # Detected header/footer patterns
-│   └── pages.jsonl              # Cleaned page records
+│   └── text_analysis.py         # Header/footer detection
 ├── Chunking/
-│   ├── chunk.py                 # Paragraph-aware character chunking
-│   └── chunk.jsonl              # Chunk output
+│   └── chunk.py                 # Paragraph-aware character chunking
 ├── Embedding/
-│   └── embedding.py             # Empty placeholder
+│   └── embedding.py             # Batched Gemini embeddings
 ├── Parser/
 │   └── structure_parser.py      # Placeholder
-├── main.py                      # Runs all implemented stages in order
+├── Controllers/
+│   └── pipeline_controller.py   # HTTP routes and request validation
+├── results/                      # Generated output files
+│   ├── extract/                 # Extraction outputs
+│   │   ├── extracted_data.jsonl # Raw page text and positioned blocks
+│   │   └── metadata.json        # Source hash and extraction metadata
+│   ├── analysis/                # Analysis outputs
+│   │   └── chrome_patterns.json # Detected header/footer patterns
+│   ├── clean/                   # Cleaning outputs
+│   │   └── pages.jsonl          # Cleaned page records
+│   ├── chunking/                # Chunking outputs
+│   │   └── chunk.jsonl          # Chunk records
+│   └── embedding/               # Embedding outputs
+│       └── embeddings.jsonl     # Gemini embeddings
+├── main.py                      # FastAPI application
+├── config.py                    # Environment configuration
+├── requirements.txt             # Runtime dependencies
 └── README.md
 ```
 
-An additional `chunk.jsonl` exists at the project root. The commands below generate `Chunking/chunk.jsonl`.
+All pipeline output files are written to the `results/` directory organized by stage.
 
 ## Setup
 
-Use Python 3 and install PyMuPDF, the only third-party dependency currently imported by the pipeline. From the project root:
+Use Python 3.11 or newer. From the project root:
 
 ```bash
-python3 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
-python -m pip install pymupdf
+python -m pip install -r requirements.txt
 ```
 
-On Windows, activate the environment with `.venv\Scripts\activate` instead. There is no dependency lockfile; the existing extraction metadata records PyMuPDF `1.28.2`.
+On Windows, activate the environment with `.venv\Scripts\activate` instead. Dependencies have version ranges in `requirements.txt`; there is no lockfile.
 
-## Run the pipeline
+## FastAPI controllers
 
-From the project root, run all four stages with one command:
+Start the server from the project root after activating the virtual environment:
 
 ```bash
-python main.py
+python -m uvicorn main:app --reload
 ```
 
-The default processes printed pages 1–132 of the included Mastercard report.
-You can also run `main.py` using your IDE's Run action; it locates the stage
-directories relative to its own file.
+You can also run `main.py` from your IDE. Open [Swagger UI](http://127.0.0.1:8000/docs)
+to try the endpoints. Each POST waits for its work to complete and returns output
+file paths relative to the project root.
 
-For a different report or page range:
+| Method | Endpoint | Action / prerequisite |
+| --- | --- | --- |
+| GET | `/health` | Check server health |
+| POST | `/api/extract` | Extract the specified local PDF |
+| POST | `/api/analyze` | Detect headers/footers after extraction |
+| POST | `/api/clean` | Clean text after extraction and analysis |
+| POST | `/api/chunk` | Chunk cleaned pages |
+| POST | `/api/embed` | Embed chunks using Gemini |
+
+For extraction, send a JSON body:
 
 ```bash
-python main.py --pdf "path/to/report.pdf" --start-page 1 --end-page 50 --page-offset -1
+curl -X POST http://127.0.0.1:8000/api/extract \
+  -H 'Content-Type: application/json' \
+  -d '{"pdf":"AnnualReports/Mastercard/Report.pdf","start_page":1,"end_page":132,"page_offset":-1}'
 ```
 
-The runner executes extraction → header/footer detection → cleaning → chunking,
-stops if a stage raises an error, and writes the final output to
-`Chunking/chunk.jsonl`. It replaces existing stage outputs. Embedding and parsing
-are placeholders and are not run. Use the individual steps below if you want to
-review detected patterns before cleaning.
+Sending `{}` to `/api/extract` uses the included report's default range.
+PDF paths refer to files on the server; relative API paths resolve from the project
+root. There is no file-upload endpoint.
 
-### Run stages individually
-
-The scripts resolve paths relative to the current working directory. Run the following steps in order, starting at the project root. Rerunning stages replaces their generated output files.
-
-### 1. Extract PDF pages
+`/api/analyze` accepts an optional body such as
+`{"top_fraction":0.05,"bottom_fraction":0.05}`. `/api/clean`, `/api/chunk`, and
+`/api/embed` need no request body:
 
 ```bash
-cd Extract
-python -c "from extract import extract_data; extract_data(1, 132, page_offset=-1, file_path='../AnnualReports/Mastercard/Report.pdf')"
+curl -X POST http://127.0.0.1:8000/api/chunk
 ```
 
-This extracts the included report's printed pages 1 through 132, inclusive, and writes `extracted_data.jsonl` and `metadata.json`.
+For embedding, set `GEMINI_API_KEY` in the root `.env` file (see `.env.example`).
+The API starts and local stages work without a key. `/api/embed` sends chunk text
+to Gemini using the existing `gemini-embedding-2` model; your account must have
+access to it. The existing embedding implementation appends to `embeddings.jsonl`,
+so repeated calls can add duplicate records.
 
-To use another PDF, change the file path, page range, and offset. The mapping is:
+Errors return a JSON `detail`: `404` for a missing PDF, `409` for missing stage
+inputs, `422` for invalid inputs, and `503` for a missing Gemini key. Other failures
+return `500`.
+
+The endpoints write to shared output files. Run one operation at a time, in stage
+order. There is no orchestration or locking layer. When changing reports, rerun
+all downstream stages; existing downstream files are not automatically invalidated.
+The server has no authentication and binds to localhost in the commands above.
+
+The controller structure follows FastAPI's
+[APIRouter documentation](https://fastapi.tiangolo.com/tutorial/bigger-applications/).
+Embedding calls use the
+[Google Gen AI SDK](https://googleapis.github.io/python-genai/#embed-content).
+
+## Pipeline order
+
+Call the individual endpoints in Swagger UI in this order:
+extraction → header/footer analysis → cleaning → chunking → embedding.
+
+The printed page range is inclusive. PDF page indexing follows:
 
 ```text
 zero-based PDF page index = printed page number + page_offset
 ```
 
-For example, use `-1` when printed page 1 is the first PDF page, or `4` when printed page 1 is the sixth PDF page.
-
-Each extracted page includes raw text, block coordinates, dimensions, a printed page number, and a possible section heading taken from the top of the page. Metadata includes the PDF's SHA-256 hash and extraction timestamp.
-
-### 2. Detect headers and footers
-
-While still in `Extract/`:
-
-```bash
-python text_analysis.py
-```
-
-This reads `extracted_data.jsonl` and writes `chrome_patterns.json`. By default, it detects blocks entirely within the top or bottom 5% of each page and replaces digits with `<N>` in the recorded patterns.
-
-Review the patterns before cleaning a new report: content near page edges may be detected as a header or footer.
-
-### 3. Clean extracted text
-
-```bash
-python extract.py
-```
-
-The script's current entry point runs **cleaning only**; extraction must be invoked separately as shown in step 1. Cleaning reads `extracted_data.jsonl` and `chrome_patterns.json`, then writes `pages.jsonl`. It normalizes Unicode and whitespace, removes matching header/footer text, and separates retained text blocks with blank lines.
-
-### 4. Create chunks
-
-```bash
-cd ../Chunking
-python chunk.py
-cd ..
-```
-
-This reads `Extract/pages.jsonl` and writes `Chunking/chunk.jsonl`. Pages are chunked independently, so chunks do not span page boundaries.
+Use `-1` when printed page 1 is the first PDF page, or `4` when printed page 1
+is the sixth PDF page. Header/footer analysis uses the top and bottom 5% of each
+page by default. Review `Extract/chrome_patterns.json` before cleaning a new
+report if you need to check which text will be removed.
 
 ## Chunking behavior
 
@@ -147,6 +158,6 @@ Each output line is a JSON object with the following fields:
 - Extraction uses embedded PDF text; there is no OCR step for scanned pages.
 - Header/footer and section detection depend on page layout. Cleaning removes matching patterns throughout text blocks, so inspect results for each new report.
 - Tables are handled as PDF text blocks, without dedicated table reconstruction.
-- The runner accepts an input PDF and page range, but stage output locations are fixed; processing another report replaces the previous stage outputs unless they are saved separately.
+- The extraction endpoint accepts an input PDF and page range, but stage output locations are fixed; processing another report replaces the previous stage outputs unless they are saved separately.
 - Document IDs use filenames, so identically named PDFs are not distinguished in chunk records.
-- There is no automated test suite or end-to-end RAG interface yet.
+- There is no end-to-end RAG question-answering interface yet.

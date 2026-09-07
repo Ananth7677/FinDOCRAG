@@ -1,13 +1,22 @@
+import sys
+from pathlib import Path
+
+# Support running this script directly as well as importing it from the API.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from config import PROJECT_ROOT, EXTRACT_DIR, CLEAN_DIR, EXTRACTED_DATA_PATH, PATTERNS_PATH
+
 from datetime import datetime, timezone
 import os
 import re
 import unicodedata
 import pymupdf
 import json
-from pathlib import Path
 import hashlib
 
-def extract_data(start_printed_page_num:int, end_printed_page_num:int, page_offset:int = -1, file_path:str = "../AnnualReports/Mastercard/Report.pdf"):
+def extract_data(start_printed_page_num:int, end_printed_page_num:int, page_offset:int = -1, file_path = PROJECT_ROOT / "AnnualReports/Mastercard/Report.pdf", *, output_dir=EXTRACT_DIR):
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
     start_page_index = start_printed_page_num + page_offset
     end_page_index = end_printed_page_num + page_offset
     print(file_path)
@@ -17,8 +26,8 @@ def extract_data(start_printed_page_num:int, end_printed_page_num:int, page_offs
         
     with pymupdf.open(file_path) as pdf_text:
         
-        temp_file = "temp_extracted_data.jsonl"
-        dest_file = "extracted_data.jsonl"
+        temp_file = Path(output_dir) / "temp_extracted_data.jsonl"
+        dest_file = Path(output_dir) / "extracted_data.jsonl"
         
         if not validate_page_number_range(start_page_index, end_page_index, 0, len(pdf_text)-1):
             print("Enter valid page number range")
@@ -71,7 +80,7 @@ def extract_data(start_printed_page_num:int, end_printed_page_num:int, page_offs
                     file.write("\n")
                     
             os.replace(temp_file, dest_file)
-            add_metadata(file_path, end_page_index-start_page_index+1, len(pdf_text), Path(file_path).name, page_offset, start_printed_page_num, end_printed_page_num)
+            add_metadata(file_path, end_page_index-start_page_index+1, len(pdf_text), Path(file_path).name, page_offset, start_printed_page_num, end_printed_page_num, output_dir=output_dir)
             
         except Exception as ex:
             print(f"exception raised during extraction: {ex}")
@@ -81,11 +90,12 @@ def extract_data(start_printed_page_num:int, end_printed_page_num:int, page_offs
                 os.remove(temp_file)
             
 
-def add_metadata(file_path: str, no_of_pages_extracted: int, no_of_pages: int,  doc_name: str, page_offset: int, start_printed_page_num:int, end_printed_page_num:int):
+def add_metadata(file_path: str, no_of_pages_extracted: int, no_of_pages: int,  doc_name: str, page_offset: int, start_printed_page_num:int, end_printed_page_num:int, *, output_dir=EXTRACT_DIR):
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
     h = hashlib.sha256(Path(file_path).read_bytes()).hexdigest()
     
-    temp_file = "temp_metadata.json"
-    dest_file = "metadata.json"
+    temp_file = Path(output_dir) / "temp_metadata.json"
+    dest_file = Path(output_dir) / "metadata.json"
     try:
         data = {
             "document_name": doc_name,
@@ -129,11 +139,12 @@ def section_harvesting(blocks: list, page_height: float, top_fraction: float = 0
         return text
     return None
 
-def clean_raw_text(file_path = "extracted_data.jsonl"):
+def clean_raw_text(file_path=EXTRACTED_DATA_PATH, *, patterns_path=PATTERNS_PATH, output_dir=CLEAN_DIR):
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
     with open(file_path, "r", encoding= "utf-8") as file:
         data = [json.loads(line) for line in file]
     
-    with open("chrome_patterns.json", "r", encoding= "utf-8") as ch_file:
+    with open(patterns_path, "r", encoding= "utf-8") as ch_file:
         chrome_data = json.load(ch_file)
     
     remove_texts = set()
@@ -153,8 +164,8 @@ def clean_raw_text(file_path = "extracted_data.jsonl"):
     
     combined_pattern = "|".join(remove_texts)
     
-    temp_file_path = "temp_data.jsonl"
-    dest_file_path = "pages.jsonl"
+    temp_file_path = Path(output_dir) / "temp_data.jsonl"
+    dest_file_path = Path(output_dir) / "pages.jsonl"
     with open(temp_file_path, "w", encoding="utf-8") as temp_file:
         for page in data:
             cleaned_blocks = []

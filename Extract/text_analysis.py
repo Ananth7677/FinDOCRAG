@@ -1,9 +1,18 @@
+import sys
+from pathlib import Path
+
+# Support running this script directly as well as importing it from the API.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from config import EXTRACTED_DATA_PATH, PATTERNS_PATH
+
 from datetime import datetime, timezone
 import json
 import re
 
-def repeated_text_analysis():
-    with open("extracted_data.jsonl", "r", encoding= "utf-8") as file:
+def repeated_text_analysis(file_path=EXTRACTED_DATA_PATH):
+    with open(file_path, "r", encoding= "utf-8") as file:
         data = [json.loads(line) for line in file]
     
     mapper = {}
@@ -33,8 +42,8 @@ def repeated_text_analysis():
         if len(pages) >30:
             print(text, x0, y0, x1, y1, len(pages))
 
-def header_footer_separation(top_fraction: float = 0.05, bottom_fraction: float = 0.05):
-    with open("extracted_data.jsonl", "r", encoding= "utf-8") as file:
+def header_footer_separation(top_fraction: float = 0.05, bottom_fraction: float = 0.05, *, file_path=EXTRACTED_DATA_PATH, output_path=PATTERNS_PATH):
+    with open(file_path, "r", encoding= "utf-8") as file:
         data = [json.loads(line) for line in file]
         
     pattern_mapper = {}
@@ -97,7 +106,8 @@ def header_footer_separation(top_fraction: float = 0.05, bottom_fraction: float 
             json_data["sample_footer_patterns"].append({"text": key_m[1], "total_count": value_m})
         
         
-    with open("chrome_patterns.json", "w", encoding= "utf-8") as cp_file:
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding= "utf-8") as cp_file:
         json.dump(json_data, cp_file, ensure_ascii= False)
             
     print(count)

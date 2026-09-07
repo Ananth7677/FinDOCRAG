@@ -30,18 +30,7 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Generated extraction outputs
-/Extract/extracted_data.jsonl
-/Extract/metadata.json
-/Extract/chrome_patterns.json
-/Extract/pages.jsonl
-/Extract/extracted_section_info.json
-/Extract/temp_extracted_data.jsonl
-/Extract/temp_metadata.json
-/Extract/temp_data.jsonl
-
-# Generated chunk outputs
-/Chunking/chunk.jsonl
-/Chunking/temp_chunk.jsonl
-/chunk.jsonl
-/temp_chunk.jsonl
+# Generated results from pipeline processing
+results/
+/temp_embeddings.jsonl
+/.pipeline.lock

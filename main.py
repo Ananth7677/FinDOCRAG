@@ -1,58 +1,36 @@
-"""Run the financial-report preparation pipeline in order."""
+import logging
 
-import argparse
-from contextlib import contextmanager
-import os
-from pathlib import Path
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
-from Chunking.chunk import chunk_process
-from Extract.extract import clean_raw_text, extract_data
-from Extract.text_analysis import header_footer_separation
+from Controllers.pipeline_controller import router
 
-
-PROJECT_ROOT = Path(__file__).resolve().parent
+app = FastAPI(title="FinDocRAG API", version="0.1.0", description="Extract, analyze, clean, chunk, and embed financial reports.")
+app.include_router(router)
 
 
-@contextmanager
-def working_directory(path):
-    """Support the existing stages' relative paths and restore the caller's cwd."""
-    previous = Path.cwd()
-    try:
-        os.chdir(path)
-        yield
-    finally:
-        os.chdir(previous)
+@app.exception_handler(FileNotFoundError)
+async def missing_input_handler(request: Request, exc: FileNotFoundError):
+    return JSONResponse(status_code=409, content={"detail": "Required input file is missing. Run the preceding stages first."})
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--pdf", type=Path,
-        default=PROJECT_ROOT / "AnnualReports" / "Mastercard" / "Report.pdf",
-        help="Input PDF (relative paths are resolved from your current directory).",
-    )
-    parser.add_argument("--start-page", type=int, default=1, help="First printed page (inclusive).")
-    parser.add_argument("--end-page", type=int, default=132, help="Last printed page (inclusive).")
-    parser.add_argument("--page-offset", type=int, default=-1, help="PDF index minus printed page number.")
-    args = parser.parse_args()
-    pdf_path = args.pdf.resolve()
+@app.exception_handler(ValueError)
+async def invalid_input_handler(request: Request, exc: ValueError):
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
 
-    with working_directory(PROJECT_ROOT / "Extract"):
-        print("[1/4] Extracting PDF pages...", flush=True)
-        extract_data(args.start_page, args.end_page, args.page_offset, str(pdf_path))
 
-        print("[2/4] Detecting headers and footers...", flush=True)
-        header_footer_separation()
+@app.exception_handler(Exception)
+async def unexpected_error_handler(request: Request, exc: Exception):
+    logging.getLogger(__name__).error("Pipeline request failed (%s)", type(exc).__name__)
+    return JSONResponse(status_code=500, content={"detail": "Pipeline operation failed. Check the input files and server configuration."})
 
-        print("[3/4] Cleaning text...", flush=True)
-        clean_raw_text()
 
-    with working_directory(PROJECT_ROOT / "Chunking"):
-        print("[4/4] Creating chunks...", flush=True)
-        chunk_process()
-
-    print(f"Done. Chunks saved to {PROJECT_ROOT / 'Chunking' / 'chunk.jsonl'}")
+@app.get("/health", tags=["Health"])
+def health():
+    return {"status": "ok"}
 
 
 if __name__ == "__main__":
-    main()
+    import uvicorn
+
+    uvicorn.run("main:app", host="127.0.0.1", port=8000)
