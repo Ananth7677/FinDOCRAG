@@ -2,7 +2,7 @@
 
 This adds a local PostgreSQL with the `pgvector` extension for embeddings.
 
-Files added:
+Files used:
 - [docker-compose.yml](docker-compose.yml)
 - [docker/initdb/init.sql](docker/initdb/init.sql)
 
@@ -29,16 +29,23 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 
 Notes:
 - The image `ankane/pgvector:latest` includes the `vector` extension built-in.
-- The init SQL creates sample tables with `vector(768)` — adjust dimension to your model if needed.
+- The init SQL creates the `embeddings` table with `vector(768)` — adjust dimension to your model if needed.
 
 Python session example:
 
 ```python
 from DBO.database import SessionLocal
+from sqlalchemy import text
 
 db = SessionLocal()
 try:
-	print(db.execute("SELECT 1").scalar())
+    print(db.execute(text("SELECT 1")).scalar_one())
 finally:
-	db.close()
+    db.close()
+```
+
+If you run the connection test directly:
+
+```bash
+python DBO/database.py
 ```

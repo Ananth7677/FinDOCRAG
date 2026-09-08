@@ -19,6 +19,9 @@ FinDocRAG/
 │   └── embedding.py             # Batched Gemini embeddings
 ├── Parser/
 │   └── structure_parser.py      # Placeholder
+├── DBO/
+│   ├── __init__.py              # Database package exports
+│   └── database.py             # SQLAlchemy session + pgvector connection test
 ├── Controllers/
 │   └── pipeline_controller.py   # HTTP routes and request validation
 ├── results/                      # Generated output files
@@ -40,6 +43,24 @@ FinDocRAG/
 ```
 
 All pipeline output files are written to the `results/` directory organized by stage.
+
+## Database / pgvector
+
+The project now includes a small `DBO` package for PostgreSQL access:
+
+- `DBO/database.py` builds a SQLAlchemy session using `DATABASE_URL` or the fallback values in `.env`
+- `DBO/database.py` also registers the `pgvector` adapter when available
+- Running `python DBO/database.py` performs a simple connection test with `SELECT version()`
+
+Default local connection settings are defined in [`.env.example`](.env.example):
+
+- `DB_HOST=localhost`
+- `DB_PORT=55432`
+- `DB_NAME=findb`
+- `DB_USER=finusr`
+- `DB_PASSWORD=finpass`
+
+If you change the Docker port mapping or database credentials, update the `.env` values to match.
 
 ## Setup
 
@@ -113,6 +134,7 @@ The controller structure follows FastAPI's
 [APIRouter documentation](https://fastapi.tiangolo.com/tutorial/bigger-applications/).
 Embedding calls use the
 [Google Gen AI SDK](https://googleapis.github.io/python-genai/#embed-content).
+Database sessions use SQLAlchemy with PostgreSQL and `pgvector` support.
 
 ## Pipeline order
 
