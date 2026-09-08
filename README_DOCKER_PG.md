@@ -17,7 +17,7 @@ docker compose up -d
 2. Connect with `psql` (example):
 
 ```bash
-psql "postgresql://finusr:finpass@localhost:5432/findb"
+psql "postgresql://finusr:finpass@localhost:55432/findb"
 ```
 
 3. Verify extension and table:
@@ -28,5 +28,17 @@ SELECT extname FROM pg_extension WHERE extname = 'vector';
 ```
 
 Notes:
-- The image `ankane/pgvector:postgres-15` includes the `vector` extension built-in.
-- The init SQL creates a sample `embeddings` table with `vector(1536)` — adjust dimension to your model.
+- The image `ankane/pgvector:latest` includes the `vector` extension built-in.
+- The init SQL creates sample tables with `vector(768)` — adjust dimension to your model if needed.
+
+Python session example:
+
+```python
+from DBO.database import SessionLocal
+
+db = SessionLocal()
+try:
+	print(db.execute("SELECT 1").scalar())
+finally:
+	db.close()
+```
