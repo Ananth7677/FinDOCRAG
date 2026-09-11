@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from google.genai import errors
 
 from Chunking.chunk import chunk_process
 from Embedding.embedding import create_embedding, create_query_embedding
@@ -11,6 +12,7 @@ from Extract.extract import clean_raw_text, extract_data
 from Extract.text_analysis import header_footer_separation
 from DBO.Services.embedding_db_services import topkresults
 
+from Integration.llm_integration import AIResponse, llm_call
 from config import (
     PROJECT_ROOT, EXTRACT_DIR, CLEAN_DIR, CHUNK_DIR,
     EXTRACTED_DATA_PATH, METADATA_PATH, PATTERNS_PATH,
@@ -41,7 +43,6 @@ class AnalysisRequest(BaseModel):
     top_fraction: float = Field(default=0.05, ge=0, lt=0.5)
     bottom_fraction: float = Field(default=0.05, ge=0, lt=0.5)
 
-
 class StageResponse(BaseModel):
     stage: str
     status: str
@@ -59,6 +60,9 @@ class EmbeddingResponse(BaseModel):
     section_text: str | None = None
     similarity: float
 
+class LLMResult(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    answer: str
 
 @router.post("/extract", response_model=StageResponse)
 def extract(request: ExtractRequest):
@@ -115,7 +119,20 @@ def embed():
     process_embedding(CHUNKS_PATH, output_path=EMBEDDINGS_PATH)
     return {"stage": "embed", "status": "completed", "outputs": [str(EMBEDDINGS_PATH.relative_to(PROJECT_ROOT))]}
 
-@router.post("/userquery", response_model=list[EmbeddingResponse])
+@router.post("/userquery", response_model=AIResponse)
 def user_query(user_query: UserQueryRequest):
-    embedding_result = create_query_embedding(user_query.question)
-    return topkresults(embedding_result)
+    
+    try:
+        embedding_result = create_query_embedding(user_query.question)
+        return llm_call(user_query.question , topkresults(embedding_result))
+    except errors.APIError as e:
+        print(f"Gemini API error: {e.code} - {e.message}")
+        
+        raise HTTPException(
+            status_code= e.code,
+            detail= e.message
+        )
+    
+    except Exception as ex:
+        print(f"Unexpected error: {type(e).__name__}: {ex}")
+        raise
