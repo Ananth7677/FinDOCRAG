@@ -8,6 +8,6 @@ CREATE TABLE IF NOT EXISTS embeddings (
   page_number int NOT NULL,
   section_text text,
   chunk_id int NOT NULL,
-  text text
+  text text,
   created_at timestamptz DEFAULT now()
 );
