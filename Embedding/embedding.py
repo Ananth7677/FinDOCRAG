@@ -22,6 +22,19 @@ from config import GEMINI_API_KEY, PROJECT_ROOT, CHUNKS_PATH, EMBEDDINGS_PATH
 BATCH_SIZE = 50
 client = genai.Client(api_key=GEMINI_API_KEY)
 
+# todo when the pg number range is changed and given it embeds the whole doc or that remaining continuation isnt correct. change the logic to see the correct ids and where condition so only the changed pages will come.
+
+def create_query_embedding(question: str):
+    content = f"task: question answering | query: {question}"
+
+    result = client.models.embed_content(
+        model="gemini-embedding-2",
+        contents=content,
+        config={"output_dimensionality": 768},
+    )
+
+    return result.embeddings[0].values
+
 def create_embedding(contents):
     while True:
         try:

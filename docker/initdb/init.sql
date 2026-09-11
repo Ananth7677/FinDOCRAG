@@ -5,6 +5,9 @@ CREATE TABLE IF NOT EXISTS embeddings (
   id serial PRIMARY KEY,
   doc_id text,
   embedding vector(768),
-  metadata jsonb,
+  page_number int NOT NULL,
+  section_text text,
+  chunk_id int NOT NULL,
+  text text
   created_at timestamptz DEFAULT now()
 );

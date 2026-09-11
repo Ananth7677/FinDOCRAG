@@ -6,8 +6,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from Chunking.chunk import chunk_process
+from Embedding.embedding import create_embedding, create_query_embedding
 from Extract.extract import clean_raw_text, extract_data
 from Extract.text_analysis import header_footer_separation
+from DBO.Services.embedding_db_services import topkresults
 
 from config import (
     PROJECT_ROOT, EXTRACT_DIR, CLEAN_DIR, CHUNK_DIR,
@@ -44,6 +46,18 @@ class StageResponse(BaseModel):
     stage: str
     status: str
     outputs: list[str]
+    
+class UserQueryRequest(BaseModel):
+    question: str
+    
+class EmbeddingResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
+    id: int
+    text: str
+    page_number: int
+    section_text: str | None = None
+    similarity: float
 
 
 @router.post("/extract", response_model=StageResponse)
@@ -100,3 +114,8 @@ def embed():
 
     process_embedding(CHUNKS_PATH, output_path=EMBEDDINGS_PATH)
     return {"stage": "embed", "status": "completed", "outputs": [str(EMBEDDINGS_PATH.relative_to(PROJECT_ROOT))]}
+
+@router.post("/userquery", response_model=list[EmbeddingResponse])
+def user_query(user_query: UserQueryRequest):
+    embedding_result = create_query_embedding(user_query.question)
+    return topkresults(embedding_result)

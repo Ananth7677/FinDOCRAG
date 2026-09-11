@@ -25,3 +25,23 @@ def get_lastest_embedding_record(doc_id: str)-> Embedding | None:
         )
         
         return db.scalars(statement).first()
+
+def topkresults(user_query_embedding: list, limit: int = 10):
+    distance = Embedding.embedding.cosine_distance(user_query_embedding)
+    similarity = (1 - distance).label("similarity")
+    
+    statement = select(Embedding, similarity).order_by(distance).limit(limit)
+    
+    with session_scope() as db:
+        rows = db.execute(statement).all()
+        print(rows)
+        results = []
+        for embedding, similarity_score in rows:
+            results.append({
+                "id": embedding.id,
+                "text": embedding.text,
+                "page_number": embedding.page_number,
+                "section_text": embedding.section_text,
+                "similarity": similarity_score
+            })
+        return results

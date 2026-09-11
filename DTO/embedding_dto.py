@@ -24,10 +24,8 @@ def to_insert_values(dto: EmbeddingDTO) -> dict:
     return {
         "doc_id": dto.doc_id,
         "embedding": dto.embedding,
-        "chunk_metadata": {
-            "chunk_id": dto.id,
-            "page_number": dto.page_number,
-            "section_text": dto.section_text,
-            "text": dto.text,
-        },
+        "chunk_id": dto.id,
+        "page_number": dto.page_number,
+        "section_text": dto.section_text,
+        "text": dto.text,        
     }
