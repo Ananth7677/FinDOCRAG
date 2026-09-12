@@ -28,6 +28,8 @@ FinDocRAG/
 │   └── embedding_dto.py        # Embedding validation and insert mapping
 ├── Integration/
 │   └── llm_integration.py      # Gemini answers and citation schema
+├── Validations/
+│   └── validations.py          # Input guardrails and citation validation
 ├── Controllers/
 │   └── pipeline_controller.py   # HTTP routes and request validation
 ├── results/                      # Generated output files
@@ -128,7 +130,8 @@ citations. `/health` checks API availability only, not database or Gemini access
 | POST | `/api/clean` | Clean text after extraction and analysis |
 | POST | `/api/chunk` | Chunk cleaned pages |
 | POST | `/api/embed` | Embed chunks using Gemini and persist them in PostgreSQL |
-| POST | `/api/userquery` | Retrieve stored chunks and generate an answer with citations |
+| POST | `/api/retrieve` | Retrieve stored chunks without generating an answer |
+| POST | `/api/userquery` | Validate the question, retrieve chunks, and generate an answer with checked citation IDs |
 
 For extraction, send a JSON body:
 
@@ -168,6 +171,15 @@ curl -X POST http://127.0.0.1:8000/api/userquery \
   -d '{"question":"What risks does the report identify?"}'
 ```
 
+Both `/api/userquery` and `/api/retrieve` require a `question` string of 5–200
+characters after trimming leading and trailing whitespace. Invalid requests return
+`422`.
+
+Before retrieval, `/api/userquery` checks regex patterns for instruction overrides,
+prompt extraction, and role overrides, then uses `gemini-2.5-flash` to classify
+the question as `ALLOW` or `BLOCK`. Blocked questions return `400` with a reason.
+Ordinary questions unrelated to the report are allowed by the classifier.
+
 The endpoint embeds the question, retrieves up to 10 chunks with cosine similarity
 strictly greater than `0.65`, and passes them to `gemini-2.5-flash`. Retrieval
 defaults are defined in `DBO/Services/embedding_db_services.py`. Retrieval searches
@@ -176,10 +188,17 @@ all stored documents; the request has no document filter.
 The response contains `llm_response` (answer text) and `citations` (objects with
 `id`, `page_number`, and `similarity`). Citation IDs refer to database embedding
 rows, not source chunk IDs. The model is instructed to answer only from retrieved
-context and cite supporting chunks. Model-generated citations are not
-independently checked against retrieved rows.
+context and return supporting chunk IDs. The server checks each citation ID
+against the retrieved chunks and fills `page_number` and `similarity` from their
+stored metadata. An unknown citation ID triggers one answer-generation retry;
+an unknown ID in the retried answer returns `502`. Answers without citations
+return `502` immediately unless their text matches the accepted no-answer fallback.
+These checks validate citation membership and metadata, not whether the cited
+text supports every claim in the answer.
 
-When retrieval returns no qualifying chunks, the response is:
+When retrieval returns no qualifying chunks, `llm_call()` produces the following
+fallback. The current validation mismatch described below causes the endpoint to
+return `502` instead of passing this response through:
 
 ```json
 {
@@ -188,11 +207,30 @@ When retrieval returns no qualifying chunks, the response is:
 }
 ```
 
+## Retrieve chunks
+
+To inspect retrieval results without generating an answer:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/retrieve \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"What risks does the report identify?"}'
+```
+
+This endpoint returns up to 10 chunks with cosine similarity strictly greater than
+`0.5`, ordered from highest similarity to lowest. Each result contains `id`,
+`text`, `page_number`, `section_text` (which may be `null`), and `similarity`.
+No matches returns an empty list. Retrieval searches all stored documents.
+
+`/api/retrieve` applies the shared question length validation, but does not run the
+regex guardrail, prompt classifier, or answer validation used by `/api/userquery`.
+
 ## Operation and errors
 
-Errors return a JSON `detail`: `404` for a missing PDF, `409` for missing stage
-inputs, `422` for invalid inputs, and `503` for a missing Gemini key. Other failures
-return `500`. `/api/userquery` forwards Gemini API errors using the provider's
+Errors return a JSON `detail`: `400` for blocked questions, `404` for a missing
+PDF, `409` for missing stage inputs, `422` for invalid inputs, `502` for answer
+validation failures, and `503` for a missing Gemini key detected by `/api/embed`.
+Other unhandled failures return `500`. `/api/userquery` forwards Gemini API errors using the provider's
 status code and message.
 
 The endpoints write to shared output files. Run one operation at a time, in stage
@@ -254,6 +292,7 @@ Each output line is a JSON object with the following fields:
 - The extraction endpoint accepts an input PDF and page range, but stage output locations are fixed; processing another report replaces the previous stage outputs unless they are saved separately.
 - Document IDs use filenames, so identically named PDFs are not distinguished in chunk records.
 - Embedding resume logic reads `chunk_metadata["chunk_id"]` from an ORM record, but the model stores a `chunk_id` column and has no `chunk_metadata` attribute. Repeating embedding for a document with stored rows currently fails; changed page ranges and chunk contents are not safely reconciled.
-- Retrieval spans all stored documents, and citation responses do not include document IDs. Citations are not independently validated.
-- The query endpoint's generic exception handler references `e` instead of `ex`, which can mask the original error. Non-Gemini failures still reach the application's generic `500` handler.
+- Retrieval spans all stored documents, and retrieval and citation responses do not include document IDs. Citation validation checks IDs and populates metadata; it does not verify factual support for the answer.
+- The no-answer fallback is currently inconsistent: `llm_call()` and its prompt include a trailing period, but output validation accepts only `"no relevant answer was found"` without a period (ignoring case). Consequently, the empty-context fallback returns `502`.
+- Missing citations fail immediately; only unknown citation IDs trigger an answer-generation retry.
 - The interface is an HTTP API with Swagger UI; there is no dedicated chat frontend.
