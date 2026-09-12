@@ -1,9 +1,10 @@
 """HTTP endpoints for the individual document-processing stages."""
 
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 from google.genai import errors
 
 from Chunking.chunk import chunk_process
@@ -13,6 +14,7 @@ from Extract.text_analysis import header_footer_separation
 from DBO.Services.embedding_db_services import topkresults
 
 from Integration.llm_integration import AIResponse, llm_call
+from Validations.validations import PrompptClassifierModel, Status, llm_output_response_validation, prompt_classifier, regex_input_guardrail
 from config import (
     PROJECT_ROOT, EXTRACT_DIR, CLEAN_DIR, CHUNK_DIR,
     EXTRACTED_DATA_PATH, METADATA_PATH, PATTERNS_PATH,
@@ -49,7 +51,7 @@ class StageResponse(BaseModel):
     outputs: list[str]
     
 class UserQueryRequest(BaseModel):
-    question: str
+    question: Annotated[str, StringConstraints(min_length = 5, max_length = 200, strip_whitespace = True)]
     
 class EmbeddingResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -119,12 +121,32 @@ def embed():
     process_embedding(CHUNKS_PATH, output_path=EMBEDDINGS_PATH)
     return {"stage": "embed", "status": "completed", "outputs": [str(EMBEDDINGS_PATH.relative_to(PROJECT_ROOT))]}
 
+@router.post("/retrieve", response_model = list[EmbeddingResponse])
+def retrieve(user_query: UserQueryRequest):
+    try:
+        query_embedding = create_query_embedding(user_query.question)
+        return topkresults(query_embedding, 10, 0.5)
+    except Exception as ex:
+        raise
+    
+
 @router.post("/userquery", response_model=AIResponse)
 def user_query(user_query: UserQueryRequest):
     
     try:
+        regex_input_guardrail(user_question = user_query.question)
+        query_allowance = prompt_classifier(user_query = user_query.question)
+        if query_allowance.status == Status.BLOCK:
+            raise HTTPException(
+                status_code = 400,
+                detail = query_allowance.reason
+            )
+            
         embedding_result = create_query_embedding(user_query.question)
-        return llm_call(user_query.question , topkresults(embedding_result))
+        context = topkresults(embedding_result)
+        llm_response = llm_call(user_query.question , context)
+        return llm_output_response_validation(llm_response, context, user_query.question)
+        
     except errors.APIError as e:
         print(f"Gemini API error: {e.code} - {e.message}")
         
@@ -133,6 +155,9 @@ def user_query(user_query: UserQueryRequest):
             detail= e.message
         )
     
+    except HTTPException:
+        raise
+    
     except Exception as ex:
-        print(f"Unexpected error: {type(e).__name__}: {ex}")
+        print(f"Unexpected error: {type(ex).__name__}: {ex}")
         raise

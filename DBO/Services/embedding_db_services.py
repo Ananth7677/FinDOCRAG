@@ -26,7 +26,7 @@ def get_lastest_embedding_record(doc_id: str)-> Embedding | None:
         
         return db.scalars(statement).first()
 
-def topkresults(user_query_embedding: list, limit: int = 10, similarity_threshold: float = 0.65):
+def topkresults(user_query_embedding: list, limit: int = 10, similarity_threshold: float = 0.65) -> list:
     distance = Embedding.embedding.cosine_distance(user_query_embedding)
     similarity = (1 - distance).label("similarity")
     
