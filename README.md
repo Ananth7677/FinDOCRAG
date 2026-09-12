@@ -196,9 +196,8 @@ return `502` immediately unless their text matches the accepted no-answer fallba
 These checks validate citation membership and metadata, not whether the cited
 text supports every claim in the answer.
 
-When retrieval returns no qualifying chunks, `llm_call()` produces the following
-fallback. The current validation mismatch described below causes the endpoint to
-return `502` instead of passing this response through:
+When retrieval returns no qualifying chunks, the endpoint returns this fallback
+with `200 OK`:
 
 ```json
 {
@@ -293,6 +292,5 @@ Each output line is a JSON object with the following fields:
 - Document IDs use filenames, so identically named PDFs are not distinguished in chunk records.
 - Embedding resume logic reads `chunk_metadata["chunk_id"]` from an ORM record, but the model stores a `chunk_id` column and has no `chunk_metadata` attribute. Repeating embedding for a document with stored rows currently fails; changed page ranges and chunk contents are not safely reconciled.
 - Retrieval spans all stored documents, and retrieval and citation responses do not include document IDs. Citation validation checks IDs and populates metadata; it does not verify factual support for the answer.
-- The no-answer fallback is currently inconsistent: `llm_call()` and its prompt include a trailing period, but output validation accepts only `"no relevant answer was found"` without a period (ignoring case). Consequently, the empty-context fallback returns `502`.
 - Missing citations fail immediately; only unknown citation IDs trigger an answer-generation retry.
 - The interface is an HTTP API with Swagger UI; there is no dedicated chat frontend.

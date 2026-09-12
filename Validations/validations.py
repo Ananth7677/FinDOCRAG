@@ -93,7 +93,7 @@ def prompt_classifier(user_query: str) -> PrompptClassifierModel:
     
 def llm_output_response_validation(llm_response: AIResponse, context: list, question: str, retry_flag: bool = False):
     
-    if not llm_response.citations and llm_response.llm_response.lower() != "no relevant answer was found":
+    if not llm_response.citations and llm_response.llm_response.lower() != "no relevant answer was found.":
         raise HTTPException(
             status_code = status.HTTP_502_BAD_GATEWAY,
             detail = "Unable to produce a verifiably grounded answer."
